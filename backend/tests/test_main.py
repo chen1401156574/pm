@@ -37,7 +37,14 @@ def test_get_kanban_initial_empty(client) -> None:
     data = response.json()
     assert data["version"] == 0
     assert "state" in data
-    assert len(data["state"]["columns"]) == 3
+    assert len(data["state"]["columns"]) == 5
+    assert [column["id"] for column in data["state"]["columns"]] == [
+        "col-backlog",
+        "col-discovery",
+        "col-progress",
+        "col-review",
+        "col-done",
+    ]
     assert data["state"]["cards"] == []
 
 def test_update_and_get_kanban(client) -> None:
@@ -80,6 +87,35 @@ def test_update_kanban_invalid_data(client) -> None:
     response = client.post("/api/kanban", json=invalid_state_2)
     assert response.status_code == 400
     assert "board_state.columns must not be empty" in response.json()["detail"]
+
+def test_legacy_three_columns_are_auto_migrated_to_five_columns(client) -> None:
+    legacy_state = {
+        "columns": [
+            {"id": "col-todo", "title": "To Do", "card_ids": ["card-1"], "order": 0},
+            {"id": "col-doing", "title": "In Progress", "card_ids": [], "order": 1},
+            {"id": "col-done", "title": "Done", "card_ids": [], "order": 2},
+        ],
+        "cards": [
+            {"id": "card-1", "title": "Legacy card", "details": "from old board", "order": 0},
+        ],
+    }
+    update_response = client.post("/api/kanban", json=legacy_state)
+    assert update_response.status_code == 200
+    assert update_response.json()["version"] == 1
+
+    migrated_response = client.get("/api/kanban")
+    assert migrated_response.status_code == 200
+    migrated = migrated_response.json()
+    assert migrated["version"] == 2
+    assert [column["id"] for column in migrated["state"]["columns"]] == [
+        "col-backlog",
+        "col-discovery",
+        "col-progress",
+        "col-review",
+        "col-done",
+    ]
+    assert migrated["state"]["columns"][0]["card_ids"] == ["card-1"]
+    assert migrated["state"]["cards"][0]["id"] == "card-1"
 
 def test_serves_exported_frontend_files(tmp_path: Path) -> None:
     frontend_dist = tmp_path / "frontend_dist"

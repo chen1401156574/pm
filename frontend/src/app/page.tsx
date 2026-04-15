@@ -2,6 +2,8 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { KanbanBoard } from "@/components/KanbanBoard";
+import { type BoardData } from "@/lib/kanban";
+import { loadBoard, saveBoard } from "@/lib/kanbanApi";
 
 const SESSION_KEY = "pm-authenticated";
 const VALID_USERNAME = "user";
@@ -13,6 +15,12 @@ export default function Home() {
   const [error, setError] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  const [board, setBoard] = useState<BoardData | null>(null);
+  const [isBoardLoading, setIsBoardLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [lastFailedSave, setLastFailedSave] = useState<BoardData | null>(null);
 
   useEffect(() => {
     setIsAuthenticated(window.sessionStorage.getItem(SESSION_KEY) === "true");
@@ -37,14 +45,84 @@ export default function Home() {
     setUsername("");
     setPassword("");
     setError("");
+    setBoard(null);
+    setLoadError(null);
+    setSaveError(null);
+    setLastFailedSave(null);
   };
+
+  const fetchBoard = async () => {
+    setIsBoardLoading(true);
+    setLoadError(null);
+    try {
+      const nextBoard = await loadBoard();
+      setBoard(nextBoard);
+    } catch (fetchError) {
+      const message =
+        fetchError instanceof Error
+          ? fetchError.message
+          : "Failed to load board. Please retry.";
+      setLoadError(message);
+    } finally {
+      setIsBoardLoading(false);
+    }
+  };
+
+  const persistBoard = async (nextBoard: BoardData) => {
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      await saveBoard(nextBoard);
+      setLastFailedSave(null);
+    } catch (persistError) {
+      const message =
+        persistError instanceof Error
+          ? persistError.message
+          : "Failed to save board changes.";
+      setSaveError(message);
+      setLastFailedSave(nextBoard);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleBoardChange = (nextBoard: BoardData) => {
+    setBoard(nextBoard);
+    void persistBoard(nextBoard);
+  };
+
+  const handleRetrySave = () => {
+    if (!lastFailedSave) {
+      return;
+    }
+    void persistBoard(lastFailedSave);
+  };
+
+  useEffect(() => {
+    if (!isAuthenticated || board !== null || isBoardLoading || loadError !== null) {
+      return;
+    }
+    void fetchBoard();
+  }, [isAuthenticated, board, isBoardLoading, loadError]);
 
   if (!isReady) {
     return null;
   }
 
   if (isAuthenticated) {
-    return <KanbanBoard onLogout={handleLogout} />;
+    return (
+      <KanbanBoard
+        onLogout={handleLogout}
+        board={board ?? undefined}
+        onBoardChange={handleBoardChange}
+        isLoading={isBoardLoading}
+        loadError={loadError}
+        onRetryLoad={() => void fetchBoard()}
+        isSaving={isSaving}
+        saveError={saveError}
+        onRetrySave={handleRetrySave}
+      />
+    );
   }
 
   return (

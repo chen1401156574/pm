@@ -6,6 +6,7 @@ from typing import Any
 import uuid
 
 from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 
 from app.db import initialize_database, _connect, get_latest_board_state, save_board_state, create_user, create_board
@@ -33,6 +34,45 @@ HELLO_WORLD_HTML = """
 # Default user for MVP
 DEFAULT_USERNAME = "user"
 DEFAULT_PASSWORD_HASH = "password" # In a real app, use a real hash
+FIVE_COLUMN_TEMPLATE = [
+    {"id": "col-backlog", "title": "Backlog", "order": 0},
+    {"id": "col-discovery", "title": "Discovery", "order": 1},
+    {"id": "col-progress", "title": "In Progress", "order": 2},
+    {"id": "col-review", "title": "Review", "order": 3},
+    {"id": "col-done", "title": "Done", "order": 4},
+]
+
+
+def build_default_board_state() -> BoardState:
+    return {
+        "columns": [
+            {**column, "card_ids": []}
+            for column in FIVE_COLUMN_TEMPLATE
+        ],
+        "cards": [],
+    }
+
+
+def migrate_legacy_three_column_state(state: BoardState) -> BoardState | None:
+    columns = state.get("columns", [])
+    if len(columns) != 3:
+        return None
+
+    column_cards = {column["id"]: column["card_ids"] for column in columns}
+    legacy_ids = {"col-todo", "col-doing", "col-done"}
+    if set(column_cards.keys()) != legacy_ids:
+        return None
+
+    return {
+        "columns": [
+            {"id": "col-backlog", "title": "Backlog", "card_ids": list(column_cards["col-todo"]), "order": 0},
+            {"id": "col-discovery", "title": "Discovery", "card_ids": [], "order": 1},
+            {"id": "col-progress", "title": "In Progress", "card_ids": list(column_cards["col-doing"]), "order": 2},
+            {"id": "col-review", "title": "Review", "card_ids": [], "order": 3},
+            {"id": "col-done", "title": "Done", "card_ids": list(column_cards["col-done"]), "order": 4},
+        ],
+        "cards": state["cards"],
+    }
 
 def get_db_path() -> Path:
     db_path = os.getenv("PM_DB_PATH")
@@ -83,6 +123,19 @@ def create_app(frontend_dist_dir: Path | None = None) -> FastAPI:
         yield
 
     app = FastAPI(title="PM MVP Backend", version="0.1.0", lifespan=lifespan)
+    cors_origins = os.getenv(
+        "PM_CORS_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3000",
+    )
+    allowed_origins = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     frontend_dist = (
         frontend_dist_dir
         if frontend_dist_dir is not None
@@ -113,18 +166,16 @@ def create_app(frontend_dist_dir: Path | None = None) -> FastAPI:
         board_id = get_user_board_id(user_id, db)
         state_data = get_latest_board_state(db, board_id)
         if state_data is None:
-            # Return a default empty board if no state exists
+            return {"version": 0, "state": build_default_board_state()}
+
+        migrated_state = migrate_legacy_three_column_state(state_data["state"])
+        if migrated_state is not None:
+            migrated_version = save_board_state(db, board_id, migrated_state)
             return {
-                "version": 0,
-                "state": {
-                    "columns": [
-                        {"id": "col-todo", "title": "To Do", "card_ids": [], "order": 0},
-                        {"id": "col-doing", "title": "In Progress", "card_ids": [], "order": 1},
-                        {"id": "col-done", "title": "Done", "card_ids": [], "order": 2},
-                    ],
-                    "cards": []
-                }
+                "version": migrated_version,
+                "state": migrated_state,
             }
+
         return state_data
 
     @app.post("/api/kanban")
