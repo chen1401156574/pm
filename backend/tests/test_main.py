@@ -1,8 +1,11 @@
 import os
 from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
+
 from app.main import create_app
+from app.openrouter_client import OpenRouterClientError
 
 @pytest.fixture
 def test_db_path(tmp_path: Path) -> Path:
@@ -10,7 +13,11 @@ def test_db_path(tmp_path: Path) -> Path:
     os.environ["PM_DB_PATH"] = str(db_path)
     yield db_path
     if db_path.exists():
-        db_path.unlink()
+        try:
+            db_path.unlink()
+        except PermissionError:
+            # On Windows, SQLite file handles may be released slightly later.
+            pass
     if "PM_DB_PATH" in os.environ:
         del os.environ["PM_DB_PATH"]
 
@@ -124,12 +131,32 @@ def test_serves_exported_frontend_files(tmp_path: Path) -> None:
     (frontend_dist / "asset.js").write_text("console.log('ok')", encoding="utf-8")
 
     # Use a separate app instance for this test to avoid conflicting with the test_db fixture
-    test_client = TestClient(create_app(frontend_dist))
+    with TestClient(create_app(frontend_dist)) as test_client:
+        home_response = test_client.get("/")
+        assert home_response.status_code == 200
+        assert "Kanban Studio" in home_response.text
 
-    home_response = test_client.get("/")
-    assert home_response.status_code == 200
-    assert "Kanban Studio" in home_response.text
+        asset_response = test_client.get("/asset.js")
+        assert asset_response.status_code == 200
+        assert "console.log('ok')" in asset_response.text
 
-    asset_response = test_client.get("/asset.js")
-    assert asset_response.status_code == 200
-    assert "console.log('ok')" in asset_response.text
+
+def test_ai_self_check_returns_reply(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.main.request_openrouter_completion", lambda messages: "4")
+
+    response = client.post("/api/ai/self-check", json={"prompt": "2+2"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["reply"] == "4"
+    assert data["model"] == "openai/gpt-oss-120b"
+
+
+def test_ai_self_check_maps_client_error(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _raise_openrouter_error(messages):
+        raise OpenRouterClientError(message="OpenRouter request timed out", status_code=504)
+
+    monkeypatch.setattr("app.main.request_openrouter_completion", _raise_openrouter_error)
+
+    response = client.post("/api/ai/self-check", json={"prompt": "2+2"})
+    assert response.status_code == 504
+    assert response.json()["detail"] == "OpenRouter request timed out"

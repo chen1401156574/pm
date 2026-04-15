@@ -8,9 +8,15 @@ import uuid
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
+from pydantic import BaseModel
 
 from app.db import initialize_database, _connect, get_latest_board_state, save_board_state, create_user, create_board
 from app.kanban_schema import BoardState, KanbanValidationError
+from app.openrouter_client import (
+    OPENROUTER_MODEL,
+    OpenRouterClientError,
+    request_openrouter_completion,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -41,6 +47,10 @@ FIVE_COLUMN_TEMPLATE = [
     {"id": "col-review", "title": "Review", "order": 3},
     {"id": "col-done", "title": "Done", "order": 4},
 ]
+
+
+class AISelfCheckRequest(BaseModel):
+    prompt: str = "2+2"
 
 
 def build_default_board_state() -> BoardState:
@@ -194,6 +204,16 @@ def create_app(frontend_dist_dir: Path | None = None) -> FastAPI:
         except Exception as e:
             logger.error(f"Error updating kanban: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+
+    @app.post("/api/ai/self-check")
+    def ai_self_check(payload: AISelfCheckRequest) -> dict[str, str]:
+        try:
+            reply = request_openrouter_completion(
+                messages=[{"role": "user", "content": payload.prompt}],
+            )
+            return {"reply": reply, "model": OPENROUTER_MODEL}
+        except OpenRouterClientError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
     @app.get("/", response_class=HTMLResponse)
     def index():
