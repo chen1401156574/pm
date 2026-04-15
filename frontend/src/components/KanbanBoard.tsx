@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -25,6 +25,12 @@ type KanbanBoardProps = {
   saveError?: string | null;
   onRetryLoad?: () => void;
   onRetrySave?: () => void;
+  aiMessages?: Array<{ id: string; role: "user" | "assistant"; content: string }>;
+  aiInput?: string;
+  onAiInputChange?: (nextValue: string) => void;
+  onAiSubmit?: (event: FormEvent<HTMLFormElement>) => void;
+  isAiSending?: boolean;
+  aiError?: string | null;
 };
 
 export const KanbanBoard = ({
@@ -37,6 +43,12 @@ export const KanbanBoard = ({
   saveError = null,
   onRetryLoad,
   onRetrySave,
+  aiMessages = [],
+  aiInput = "",
+  onAiInputChange,
+  onAiSubmit,
+  isAiSending = false,
+  aiError = null,
 }: KanbanBoardProps) => {
   const isCard = (card: Card | undefined): card is Card => Boolean(card);
   const [localBoard, setLocalBoard] = useState<BoardData>(() => board ?? initialData);
@@ -221,34 +233,94 @@ export const KanbanBoard = ({
           </div>
         </header>
 
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCorners}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          <section className="grid gap-6 lg:grid-cols-5">
-            {localBoard.columns.map((column) => (
-              <KanbanColumn
-                key={column.id}
-                column={column}
-                cards={column.cardIds
-                  .map((cardId) => localBoard.cards[cardId])
-                  .filter(isCard)}
-                onRename={handleRenameColumn}
-                onAddCard={handleAddCard}
-                onDeleteCard={handleDeleteCard}
-              />
-            ))}
-          </section>
-          <DragOverlay>
-            {activeCard ? (
-              <div className="w-[260px]">
-                <KanbanCardPreview card={activeCard} />
-              </div>
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCorners}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="grid gap-6 lg:grid-cols-5">
+              {localBoard.columns.map((column) => (
+                <KanbanColumn
+                  key={column.id}
+                  column={column}
+                  cards={column.cardIds
+                    .map((cardId) => localBoard.cards[cardId])
+                    .filter(isCard)}
+                  onRename={handleRenameColumn}
+                  onAddCard={handleAddCard}
+                  onDeleteCard={handleDeleteCard}
+                />
+              ))}
+            </div>
+            <DragOverlay>
+              {activeCard ? (
+                <div className="w-[260px]">
+                  <KanbanCardPreview card={activeCard} />
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+
+          <aside className="flex h-[calc(100vh-11rem)] min-h-[520px] flex-col rounded-[28px] border border-[var(--stroke)] bg-white/90 p-5 shadow-[var(--shadow)] backdrop-blur">
+            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--gray-text)]">
+              AI Assistant
+            </p>
+            <h2 className="mt-2 font-display text-2xl font-semibold text-[var(--navy-dark)]">Board Copilot</h2>
+            <p className="mt-2 text-xs leading-5 text-[var(--gray-text)]">
+              Ask AI to summarize progress or update the board. Changes apply automatically when
+              `board_update` is returned.
+            </p>
+
+            <div className="mt-4 flex-1 space-y-3 overflow-y-auto rounded-2xl border border-[var(--stroke)] bg-[var(--surface)] p-3">
+              {aiMessages.length === 0 ? (
+                <p className="text-xs text-[var(--gray-text)]">
+                  Start a conversation, for example: “Create a task to prepare sprint demo.”
+                </p>
+              ) : null}
+              {aiMessages.map((message) => (
+                <article
+                  key={message.id}
+                  className={
+                    message.role === "assistant"
+                      ? "rounded-2xl bg-white p-3 text-sm text-[var(--navy-dark)]"
+                      : "ml-8 rounded-2xl bg-[var(--secondary-purple)] p-3 text-sm text-white"
+                  }
+                >
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] opacity-80">
+                    {message.role === "assistant" ? "AI" : "You"}
+                  </p>
+                  <p className="whitespace-pre-wrap leading-6">{message.content}</p>
+                </article>
+              ))}
+            </div>
+
+            {aiError ? (
+              <p role="alert" className="mt-3 text-xs font-medium text-red-600">
+                {aiError}
+              </p>
             ) : null}
-          </DragOverlay>
-        </DndContext>
+
+            <form onSubmit={onAiSubmit} className="mt-3 space-y-2">
+              <textarea
+                value={aiInput}
+                onChange={(event) => onAiInputChange?.(event.target.value)}
+                rows={4}
+                placeholder="Ask AI to update your board..."
+                className="w-full resize-none rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm"
+                disabled={isAiSending}
+              />
+              <button
+                type="submit"
+                disabled={isAiSending || !aiInput.trim()}
+                className="w-full rounded-full bg-[var(--secondary-purple)] px-4 py-2 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isAiSending ? "Sending..." : "Send"}
+              </button>
+            </form>
+          </aside>
+        </section>
       </main>
     </div>
   );

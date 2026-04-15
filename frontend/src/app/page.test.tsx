@@ -2,11 +2,12 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Home from "@/app/page";
 import { initialData } from "@/lib/kanban";
-import { loadBoard, saveBoard } from "@/lib/kanbanApi";
+import { chatWithAi, loadBoard, saveBoard } from "@/lib/kanbanApi";
 
 vi.mock("@/lib/kanbanApi", () => ({
   loadBoard: vi.fn(),
   saveBoard: vi.fn(),
+  chatWithAi: vi.fn(),
 }));
 
 vi.mock("@/components/KanbanBoard", () => ({
@@ -17,11 +18,18 @@ vi.mock("@/components/KanbanBoard", () => ({
     onRetrySave?: () => void;
     loadError?: string | null;
     saveError?: string | null;
+    aiMessages?: Array<{ id: string; role: "user" | "assistant"; content: string }>;
+    aiInput?: string;
+    onAiInputChange?: (nextValue: string) => void;
+    onAiSubmit?: (event: React.FormEvent<HTMLFormElement>) => void;
+    isAiSending?: boolean;
+    aiError?: string | null;
   }) => (
     <div>
       <h1>Kanban Studio</h1>
       {props.loadError ? <p role="alert">{props.loadError}</p> : null}
       {props.saveError ? <p role="alert">{props.saveError}</p> : null}
+      {props.aiError ? <p role="alert">{props.aiError}</p> : null}
       <button type="button" onClick={props.onLogout}>
         Log out
       </button>
@@ -34,6 +42,21 @@ vi.mock("@/components/KanbanBoard", () => ({
       <button type="button" onClick={props.onRetrySave}>
         Retry save
       </button>
+      <form onSubmit={props.onAiSubmit}>
+        <textarea
+          aria-label="AI input"
+          value={props.aiInput}
+          onChange={(event) => props.onAiInputChange?.(event.target.value)}
+        />
+        <button type="submit" disabled={props.isAiSending}>
+          Send
+        </button>
+      </form>
+      <ul>
+        {props.aiMessages?.map((message) => (
+          <li key={message.id}>{message.content}</li>
+        ))}
+      </ul>
     </div>
   ),
 }));
@@ -43,6 +66,10 @@ describe("Sign in gate", () => {
     vi.clearAllMocks();
     vi.mocked(loadBoard).mockResolvedValue(initialData);
     vi.mocked(saveBoard).mockResolvedValue(undefined);
+    vi.mocked(chatWithAi).mockResolvedValue({
+      reply: "done",
+      boardUpdate: null,
+    });
   });
 
   beforeEach(() => {
@@ -123,5 +150,28 @@ describe("Sign in gate", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("save failed");
     await user.click(screen.getByRole("button", { name: /retry save/i }));
     expect(saveBoard).toHaveBeenCalledTimes(2);
+  });
+
+  it("sends AI message and refreshes board when board_update exists", async () => {
+    vi.mocked(chatWithAi).mockResolvedValueOnce({
+      reply: "updated",
+      boardUpdate: initialData,
+    });
+    vi.mocked(loadBoard).mockResolvedValue(initialData);
+
+    render(<Home />);
+    const user = userEvent.setup();
+
+    await user.type(screen.getByLabelText(/username/i), "user");
+    await user.type(screen.getByLabelText(/password/i), "password");
+    await user.click(screen.getByRole("button", { name: /sign in/i }));
+    await screen.findByRole("heading", { name: /kanban studio/i });
+
+    await user.type(screen.getByLabelText(/ai input/i), "add task");
+    await user.click(screen.getByRole("button", { name: /send/i }));
+
+    expect(chatWithAi).toHaveBeenCalledWith("add task");
+    expect(await screen.findByText("updated")).toBeInTheDocument();
+    expect(loadBoard).toHaveBeenCalledTimes(2);
   });
 });

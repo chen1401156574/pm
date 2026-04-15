@@ -1,5 +1,5 @@
 import { initialData } from "@/lib/kanban";
-import { __testables, loadBoard, saveBoard } from "@/lib/kanbanApi";
+import { __testables, chatWithAi, loadBoard, saveBoard } from "@/lib/kanbanApi";
 
 const createJsonResponse = (payload: unknown, status = 200) =>
   new Response(JSON.stringify(payload), {
@@ -76,5 +76,33 @@ describe("kanbanApi", () => {
 
   it("uses localhost:8000 as fallback API base in local dev", () => {
     expect(__testables.resolveApiBaseUrl()).toBe("http://localhost:8000");
+  });
+
+  it("calls AI chat endpoint and maps board_update", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      createJsonResponse({
+        reply: "updated",
+        board_update: {
+          columns: [{ id: "col-1", title: "Todo", card_ids: ["card-1"], order: 0 }],
+          cards: [{ id: "card-1", title: "Task", details: "Detail", order: 0 }],
+        },
+      })
+    );
+
+    const result = await chatWithAi("add task");
+    const [url] = fetchSpy.mock.calls[0];
+    expect(String(url)).toMatch(/\/api\/ai\/chat$/);
+    expect(result.reply).toBe("updated");
+    expect(result.boardUpdate?.cards["card-1"]?.title).toBe("Task");
+  });
+
+  it("throws when AI response misses reply", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      createJsonResponse({
+        board_update: null,
+      })
+    );
+
+    await expect(chatWithAi("hello")).rejects.toThrow(/missing reply/i);
   });
 });

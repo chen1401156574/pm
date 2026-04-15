@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
+from dotenv import load_dotenv
 
 from app.db import initialize_database, _connect, get_latest_board_state, save_board_state, create_user, create_board
 from app.kanban_schema import BoardState, KanbanValidationError
@@ -19,6 +20,10 @@ from app.openrouter_client import (
     request_openrouter_completion,
 )
 from app.ai_structured_output import AIStructuredOutputError, parse_ai_structured_output
+
+# Load project-root .env so local runs can read OPENROUTER_API_KEY and other settings.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(PROJECT_ROOT / ".env")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
