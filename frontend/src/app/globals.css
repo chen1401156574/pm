@@ -1,6 +1,8 @@
 @import "tailwindcss";
 
 :root {
+  --font-display: "Segoe UI";
+  --font-body: "Segoe UI";
   --accent-yellow: #ecad0a;
   --primary-blue: #209dd7;
   --secondary-purple: #753991;

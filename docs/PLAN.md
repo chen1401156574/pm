@@ -1,37 +1,270 @@
-# High level steps for project
+# 项目执行计划（标准版）
 
-Part 1: Plan
+## Part 1: 计划细化与审批
 
-Enrich this document to plan out each of these parts in detail, with substeps listed out as a checklist to be checked off by the agent, and with tests and success critieria for each. Also create an AGENTS.md file inside the frontend directory that describes the existing code there. Ensure the user checks and approves the plan.
+### 目标
+- [ ] 将 Part 2 到 Part 10 细化为可执行清单（每步可勾选）
+- [ ] 为每个 Part 增加测试策略与验收标准
+- [ ] 明确全局质量门禁：单元测试覆盖率不低于 80%
+- [ ] 在 `frontend/` 新增 `AGENTS.md` 说明现有前端代码
+- [ ] 等待用户审批计划后再进入 Part 2
 
-Part 2: Scaffolding
+### 执行清单
+- [ ] 梳理需求、边界和当前仓库结构（frontend/backend/scripts/docs）
+- [ ] 输出完整执行计划（本文件）
+- [ ] 定义覆盖率统计口径（仅单元测试，按行覆盖率）
+- [ ] 约定覆盖率检查命令与失败处理（未达标则阻塞合并）
+- [ ] 新增并提交 `frontend/AGENTS.md`
+- [ ] 请求用户审核并记录审批结果
 
-Set up the Docker infrastructure, the backend in backend/ with FastAPI, and write the start and stop scripts in the scripts/ directory. This should serve example static HTML to confirm that a 'hello world' example works running locally and also make an API call.
+### 测试
+- [ ] 校验计划完整性（10 个 Part 均含步骤/测试/验收）
+- [ ] 运行一次前端现有单元测试，确认基线可运行
 
-Part 3: Add in Frontend
+### 验收标准
+- [ ] 计划获得用户明确批准
+- [ ] `frontend/AGENTS.md` 存在且内容与代码一致
+- [ ] 覆盖率目标（>=80%）已写入计划并可执行
 
-Now update so that the frontend is statically built and served, so that the app has the demo Kanban board displayed at /. Comprehensive unit and integration tests.
+---
 
-Part 4: Add in a fake user sign in experience
+## Part 2: 脚手架（Docker + FastAPI + 脚本）
 
-Now update so that on first hitting /, you need to log in with dummy credentials ("user", "password") in order to see the Kanban, and you can log out. Comprehensive tests.
+### 目标
+- [ ] 建立 Docker 化运行骨架
+- [ ] 在 `backend/` 初始化 FastAPI 服务
+- [ ] 在 `scripts/` 提供 Mac/Windows/Linux 启停脚本
+- [ ] 通过后端返回静态 Hello World 页面和示例 API
 
-Part 5: Database modeling
+### 执行清单
+- [ ] 创建后端项目结构（应用入口、路由、配置）
+- [ ] 添加 `/` 静态 HTML（Hello World）响应
+- [ ] 添加 `/api/health`（或等价）健康检查接口
+- [ ] 编写 Dockerfile（使用 `uv` 管理 Python 依赖）
+- [ ] 编写 docker-compose（本地一键启动）
+- [ ] 编写 `scripts/start-*` 与 `scripts/stop-*`
+- [ ] 增加 `.env` 读取机制（先不要求 AI 调用）
 
-Now propose a database schema for the Kanban, saving it as JSON. Document the database approach in docs/ and get user sign off.
+### 测试
+- [ ] 后端单元测试：路由返回码与响应体
+- [ ] 集成测试：容器启动后可访问 `/` 与 API
+- [ ] 脚本测试：三平台脚本在目标系统可执行
 
-Part 6: Backend
+### 验收标准
+- [ ] `docker compose up` 后，浏览器可访问 Hello World 页面
+- [ ] API 健康检查返回 200
+- [ ] 启停脚本均可成功启动与停止服务
 
-Now add API routes to allow the backend to read and change the Kanban for a given user; test this thoroughly with backend unit tests. The database should be created if it doesn't exist.
+---
 
-Part 7: Frontend + Backend
+## Part 3: 接入前端静态构建与服务
 
-Now have the frontend actually use the backend API, so that the app is a proper persistent Kanban board. Test very throughly.
+### 目标
+- [ ] 将现有 Next.js 前端构建产物接入后端静态服务
+- [ ] 访问 `/` 展示 Kanban Demo 页面
 
-Part 8: AI connectivity
+### 执行清单
+- [ ] 设计构建流程：前端 build -> 产物拷贝到后端静态目录
+- [ ] 更新 Docker 构建流程（多阶段或等价简化方案）
+- [ ] 后端静态路由适配前端产物
+- [ ] 修复路径与资源引用（CSS/JS/静态资源）
+- [ ] 保持本地开发模式与容器模式都可运行
 
-Now allow the backend to make an AI call via OpenRouter. Test connectivity with a simple "2+2" test and ensure the AI call is working.
+### 测试
+- [ ] 前端单元测试通过（Vitest）
+- [ ] 前端端到端测试通过（Playwright）
+- [ ] 容器内访问 `/` 能看到 Kanban 关键元素（标题/列）
 
-Part 9: Now extend the backend call so that it always calls the AI with the JSON of the Kanban board, plus the user's question (and conversation history). The AI should respond with Structured Outputs that includes the response to the user and optionaly an update to the Kanban. Test thoroughly.
+### 验收标准
+- [ ] 容器环境下首页显示 Kanban Studio
+- [ ] 单元测试覆盖率维持 >=80%
+- [ ] 基础 e2e 场景通过（加载、加卡、拖拽至少一项）
 
-Part 10: Now add a beautiful sidebar widget to the UI supporting full AI chat, and allowing the LLM (as it determines) to update the Kanban based on its Structured Outputs. If the AI updates the Kanban, then the UI should refresh automatically.
+---
+
+## Part 4: 假登录体验（user/password）
+
+### 目标
+- [ ] 首次访问需登录（用户名 `user`，密码 `password`）
+- [ ] 登录后可访问看板，支持退出
+
+### 执行清单
+- [ ] 新增登录页面与表单校验
+- [ ] 新增简化会话机制（本地存储或后端会话，按实现选一种）
+- [ ] 首页路由守卫：未登录跳转登录页
+- [ ] 新增退出入口并清理会话状态
+- [ ] 保留未来多用户扩展接口边界
+
+### 测试
+- [ ] 单元测试：登录表单验证、状态切换、登出逻辑
+- [ ] 集成测试：未登录访问受保护页会被拦截
+- [ ] e2e：登录成功、登录失败、退出后重定向
+
+### 验收标准
+- [ ] 错误凭据无法进入看板
+- [ ] 正确凭据可进入看板且刷新后会话行为符合设计
+- [ ] 单元测试覆盖率 >=80%
+
+---
+
+## Part 5: 数据库建模（Kanban JSON）
+
+### 目标
+- [ ] 产出 SQLite 数据模型设计（支持多用户）
+- [ ] 将看板以 JSON 形式持久化
+- [ ] 完成文档并获得用户签字确认
+
+### 执行清单
+- [ ] 设计实体与关系（User、Board、BoardState）
+- [ ] 定义表结构、索引、约束（唯一键/外键）
+- [ ] 约定 JSON schema（列、卡片、排序字段）
+- [ ] 明确迁移策略与初始化策略（DB 不存在时自动创建）
+- [ ] 在 `docs/` 增加数据库设计说明
+- [ ] 发起用户评审并收集反馈
+
+### 测试
+- [ ] 单元测试：schema 序列化/反序列化
+- [ ] 数据层测试：初始化建表、读写、约束行为
+- [ ] 失败场景：非法 JSON、缺失用户、空看板
+
+### 验收标准
+- [ ] 文档明确且经用户确认
+- [ ] 新环境启动可自动创建数据库
+- [ ] 单元测试覆盖率 >=80%
+
+---
+
+## Part 6: 后端 API（读写看板）
+
+### 目标
+- [ ] 提供按用户读取/更新看板的 API
+- [ ] 形成稳定的服务层与存储层边界
+
+### 执行清单
+- [ ] 设计 API 契约（请求/响应/错误码）
+- [ ] 实现读取看板接口
+- [ ] 实现更新看板接口（整体替换或增量更新按方案定）
+- [ ] 增加输入校验与错误处理
+- [ ] 补充日志与最小可观测性（请求 id/错误信息）
+
+### 测试
+- [ ] API 单元测试：参数校验、业务分支、错误分支
+- [ ] 存储层测试：并发更新与持久化一致性
+- [ ] 集成测试：从 API 到 DB 全链路
+
+### 验收标准
+- [ ] API 能正确读写指定用户看板
+- [ ] 异常请求返回稳定且可预期的错误结构
+- [ ] 单元测试覆盖率 >=80%
+
+---
+
+## Part 7: 前后端联调（持久化看板）
+
+### 目标
+- [ ] 前端改为通过 API 读写看板
+- [ ] 页面刷新后数据保持一致
+
+### 执行清单
+- [ ] 前端抽象数据访问层（fetch 客户端）
+- [ ] 页面初始化从后端拉取看板
+- [ ] 卡片/列改动后调用后端保存
+- [ ] 处理加载态、错误态、重试策略（简化实现）
+- [ ] 保留与 AI 侧边栏后续集成接口
+
+### 测试
+- [ ] 前端单元测试：数据层、状态管理、错误处理
+- [ ] 前后端集成测试：新增/删除/拖拽后的持久化行为
+- [ ] e2e：刷新后数据仍在
+
+### 验收标准
+- [ ] 主要交互均由后端持久化
+- [ ] 页面刷新不丢数据
+- [ ] 单元测试覆盖率 >=80%
+
+---
+
+## Part 8: AI 连通性（OpenRouter）
+
+### 目标
+- [ ] 后端可通过 OpenRouter 发起模型调用
+- [ ] 完成最小连通性验证（`2+2`）
+
+### 执行清单
+- [ ] 新增 OpenRouter 客户端封装
+- [ ] 从环境变量读取 `OPENROUTER_API_KEY`
+- [ ] 固定模型 `openai/gpt-oss-120b`
+- [ ] 新增测试路由或内部自检函数（仅开发使用）
+- [ ] 处理超时与基础错误映射
+
+### 测试
+- [ ] 单元测试：请求构造、响应解析、错误映射
+- [ ] 集成测试：mock OpenRouter 接口
+- [ ] 手工连通性测试：真实环境执行 `2+2`
+
+### 验收标准
+- [ ] 能稳定获得模型响应
+- [ ] 错误时返回可读信息，不泄露敏感信息
+- [ ] 单元测试覆盖率 >=80%
+
+---
+
+## Part 9: 结构化 AI 输出驱动看板更新
+
+### 目标
+- [ ] 后端每次 AI 调用都携带看板 JSON + 用户问题 + 对话历史
+- [ ] AI 返回结构化结果：`reply` + 可选 `board_update`
+
+### 执行清单
+- [ ] 定义结构化输出 schema（JSON Schema 或等价）
+- [ ] 构建 prompt 模板（系统指令+上下文注入）
+- [ ] 解析并校验 AI 输出
+- [ ] 当 `board_update` 存在时执行持久化更新
+- [ ] 记录会话历史并限制上下文长度
+
+### 测试
+- [ ] 单元测试：schema 校验、解析失败、空更新分支
+- [ ] 集成测试：mock AI 返回多种结构（有效/无效/部分缺失）
+- [ ] 回归测试：不影响非 AI 的看板 API
+
+### 验收标准
+- [ ] AI 文本回复稳定可展示
+- [ ] 有效 `board_update` 能正确写入数据库
+- [ ] 非法结构化输出不会破坏现有数据
+- [ ] 单元测试覆盖率 >=80%
+
+---
+
+## Part 10: 前端 AI 侧边栏与自动刷新
+
+### 目标
+- [ ] 新增美观的 AI 聊天侧边栏
+- [ ] 支持完整对话并按 AI 输出更新看板
+- [ ] 看板更新后 UI 自动刷新
+
+### 执行清单
+- [ ] 设计侧边栏 UI（消息列表、输入框、发送状态）
+- [ ] 接入后端 AI 接口并展示回复
+- [ ] 收到 `board_update` 后触发看板刷新
+- [ ] 处理并发请求、按钮禁用、错误提示
+- [ ] 确保样式遵循项目色彩方案
+
+### 测试
+- [ ] 组件单元测试：输入、发送、渲染、错误态
+- [ ] 集成测试：聊天与看板联动刷新
+- [ ] e2e：用户发问 -> AI 回复 -> 看板变化可见
+
+### 验收标准
+- [ ] 侧边栏体验完整可用
+- [ ] AI 触发的看板变化可即时反映到 UI
+- [ ] 单元测试覆盖率 >=80%
+
+---
+
+## 全局测试与质量门禁
+
+- [ ] 单元测试覆盖率目标：每个阶段相关模块行覆盖率 >=80%
+- [ ] 覆盖率命令（前端）：`npm run test:unit -- --coverage`
+- [ ] 覆盖率命令（后端）：在 Part 2/6 落地后提供（例如 `pytest --cov`）
+- [ ] 关键路径需具备 e2e 回归：登录、看板交互、AI 对话（完成后）
+- [ ] 未通过测试或覆盖率阈值时，不进入下一 Part
