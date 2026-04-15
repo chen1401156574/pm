@@ -1,7 +1,11 @@
 from pathlib import Path
+from contextlib import asynccontextmanager
+import os
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
+
+from app.db import initialize_database
 
 HELLO_WORLD_HTML = """
 <!doctype html>
@@ -20,7 +24,13 @@ HELLO_WORLD_HTML = """
 
 
 def create_app(frontend_dist_dir: Path | None = None) -> FastAPI:
-    app = FastAPI(title="PM MVP Backend", version="0.1.0")
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        db_path = os.getenv("PM_DB_PATH")
+        initialize_database(Path(db_path) if db_path else None)
+        yield
+
+    app = FastAPI(title="PM MVP Backend", version="0.1.0", lifespan=lifespan)
     frontend_dist = (
         frontend_dist_dir
         if frontend_dist_dir is not None
