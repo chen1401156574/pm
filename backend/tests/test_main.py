@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 
@@ -160,3 +161,112 @@ def test_ai_self_check_maps_client_error(client, monkeypatch: pytest.MonkeyPatch
     response = client.post("/api/ai/self-check", json={"prompt": "2+2"})
     assert response.status_code == 504
     assert response.json()["detail"] == "OpenRouter request timed out"
+
+
+def test_ai_chat_applies_valid_board_update(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _mock_openrouter(messages):
+        return (
+            '{"reply":"已更新","board_update":{"columns":[{"id":"col-backlog","title":"Backlog","card_ids":["card-1"],"order":0},'
+            '{"id":"col-discovery","title":"Discovery","card_ids":[],"order":1},'
+            '{"id":"col-progress","title":"In Progress","card_ids":[],"order":2},'
+            '{"id":"col-review","title":"Review","card_ids":[],"order":3},'
+            '{"id":"col-done","title":"Done","card_ids":[],"order":4}],'
+            '"cards":[{"id":"card-1","title":"AI Task","details":"from ai","order":0}]}}'
+        )
+
+    monkeypatch.setattr("app.main.request_openrouter_completion", _mock_openrouter)
+    response = client.post("/api/ai/chat", json={"question": "加一张卡片"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["reply"] == "已更新"
+    assert payload["board_update"] is not None
+    assert payload["board_update"]["cards"][0]["id"] == "card-1"
+
+    latest = client.get("/api/kanban").json()
+    assert latest["state"]["cards"][0]["title"] == "AI Task"
+
+
+def test_ai_chat_rejects_invalid_board_update_without_db_pollution(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Seed initial board state.
+    seed_state = {
+        "columns": [
+            {"id": "col-backlog", "title": "Backlog", "card_ids": ["card-1"], "order": 0},
+            {"id": "col-discovery", "title": "Discovery", "card_ids": [], "order": 1},
+            {"id": "col-progress", "title": "In Progress", "card_ids": [], "order": 2},
+            {"id": "col-review", "title": "Review", "card_ids": [], "order": 3},
+            {"id": "col-done", "title": "Done", "card_ids": [], "order": 4},
+        ],
+        "cards": [
+            {"id": "card-1", "title": "Baseline", "details": "seed", "order": 0},
+        ],
+    }
+    update_response = client.post("/api/kanban", json=seed_state)
+    assert update_response.status_code == 200
+    before = client.get("/api/kanban").json()
+    before_version = before["version"]
+
+    monkeypatch.setattr(
+        "app.main.request_openrouter_completion",
+        lambda messages: '{"reply":"bad","board_update":{"columns":[],"cards":[]}}',
+    )
+    response = client.post("/api/ai/chat", json={"question": "破坏数据"})
+    assert response.status_code == 502
+    assert "Invalid AI response" in response.json()["detail"]
+
+    after = client.get("/api/kanban").json()
+    assert after["version"] == before_version
+    assert after["state"] == before["state"]
+
+
+def test_ai_chat_includes_history_and_trims_context(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    captured_histories: list[list[dict[str, str]]] = []
+
+    def _mock_openrouter(messages):
+        assert len(messages) == 2
+        context = messages[1]["content"]
+        assert '"board_state"' in context
+        marker = '"history":'
+        history_start = context.index(marker) + len(marker)
+        history_end = context.rfind("]")
+        history_json = context[history_start : history_end + 1]
+        captured_histories.append(json.loads(history_json))
+        return '{"reply":"ok","board_update":null}'
+
+    monkeypatch.setattr("app.main.request_openrouter_completion", _mock_openrouter)
+
+    for idx in range(8):
+        response = client.post("/api/ai/chat", json={"question": f"q-{idx}"})
+        assert response.status_code == 200
+        assert response.json()["board_update"] is None
+
+    assert captured_histories[0] == []
+    # History is trimmed to MAX_AI_HISTORY_MESSAGES (=12), so it should not grow unbounded.
+    assert len(captured_histories[-1]) <= 12
+    assert captured_histories[-1][-1]["role"] == "assistant"
+
+
+def test_non_ai_kanban_api_still_works_after_ai_chat(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.main.request_openrouter_completion",
+        lambda messages: '{"reply":"no update","board_update":null}',
+    )
+    ai_response = client.post("/api/ai/chat", json={"question": "只聊天"})
+    assert ai_response.status_code == 200
+
+    update_state = {
+        "columns": [
+            {"id": "col-backlog", "title": "Backlog", "card_ids": ["card-2"], "order": 0},
+            {"id": "col-discovery", "title": "Discovery", "card_ids": [], "order": 1},
+            {"id": "col-progress", "title": "In Progress", "card_ids": [], "order": 2},
+            {"id": "col-review", "title": "Review", "card_ids": [], "order": 3},
+            {"id": "col-done", "title": "Done", "card_ids": [], "order": 4},
+        ],
+        "cards": [
+            {"id": "card-2", "title": "Still works", "details": "normal api", "order": 0},
+        ],
+    }
+    update_response = client.post("/api/kanban", json=update_state)
+    assert update_response.status_code == 200
+
+    latest = client.get("/api/kanban").json()
+    assert latest["state"]["cards"][0]["id"] == "card-2"
