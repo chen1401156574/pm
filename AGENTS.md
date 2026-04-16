@@ -1,53 +1,54 @@
-# The Project Management MVP web app
+# 项目管理 MVP Web 应用
 
-## Business Requirements
+## 业务需求
 
-This project is building a Project Management App. Key features:
-- A user can sign in
-- When signed in, the user sees a Kanban board representing their project
-- The Kanban board has fixed columns that can be renamed
-- The cards on the Kanban board can be moved with drag and drop, and edited
-- There is an AI chat feature in a sidebar; the AI is able to create / edit / move one or more cards
+本项目用于构建一个项目管理应用，核心功能包括：
+- 用户可以登录
+- 登录后，用户可以看到代表其项目的看板（Kanban）
+- 看板列为固定列，但列名可修改
+- 看板卡片支持拖拽移动与编辑
+- 页面右侧有 AI 聊天侧边栏，AI 可以创建 / 编辑 / 移动一张或多张卡片
 
-## Limitations
+## MVP 限制
 
-For the MVP, there will only be a user sign in (hardcoded to 'user' and 'password') but the database will support multiple users for future.
+MVP 阶段仅提供一个登录用户（固定为 `user` / `password`），但数据库需支持未来多用户扩展。
 
-For the MVP, there will only be 1 Kanban board per signed in user.
+MVP 阶段每个已登录用户仅有 1 个看板。
 
-For the MVP, this will run locally (in a docker container)
+MVP 阶段仅在本地运行（通过 Docker 容器）。
 
-## Technical Decisions
+## 技术决策
 
-- NextJS frontend
-- Python FastAPI backend, including serving the static NextJS site at /
-- Everything packaged into a Docker container
-- Use "uv" as the package manager for python in the Docker container
-- Use OpenRouter for the AI calls. An OPENROUTER_API_KEY is in .env in the project root
-- Use `openai/gpt-oss-120b` as the model
-- Use SQLLite local database for the database, creating a new db if it doesn't exist
-- Start and Stop server scripts for Mac, PC, Linux in scripts/
+- 前端使用 Next.js
+- 后端使用 Python FastAPI，并负责在 `/` 提供 Next.js 静态站点
+- 所有内容统一打包到 Docker 容器中
+- Docker 容器内 Python 包管理使用 `uv`
+- AI 调用使用 OpenRouter，`OPENROUTER_API_KEY` 位于项目根目录 `.env`
+- 模型固定为 `openai/gpt-oss-120b`
+- 数据库使用本地 SQLite，不存在时自动创建
+- 在 `scripts/` 目录提供 Mac / Windows / Linux 的启动与停止脚本
 
-## Starting Point
+## 起始状态
 
-A working MVP of the frontend has been built and is already in frontend. This is not yet designed for the Docker setup. It's a pure frontend-only demo.
+当前 `frontend/` 已有可运行的前端 MVP。  
+该版本尚未适配 Docker 方案，目前仍是纯前端演示。
 
-## Color Scheme
+## 配色方案
 
-- Accent Yellow: `#ecad0a` - accent lines, highlights
-- Blue Primary: `#209dd7` - links, key sections
-- Purple Secondary: `#753991` - submit buttons, important actions
-- Dark Navy: `#032147` - main headings
-- Gray Text: `#888888` - supporting text, labels
+- 强调黄（Accent Yellow）：`#ecad0a`，用于强调线条与高亮
+- 主蓝（Blue Primary）：`#209dd7`，用于链接与关键区块
+- 辅助紫（Purple Secondary）：`#753991`，用于提交按钮与重要操作
+- 深海军蓝（Dark Navy）：`#032147`，用于主标题
+- 灰色文本（Gray Text）：`#888888`，用于说明文字与标签
 
-## Coding standards
+## 编码规范
 
-1. Use latest versions of libraries and idiomatic approaches as of today
-2. Keep it simple - NEVER over-engineer, ALWAYS simplify, NO unnecessary defensive programming. No extra features - focus on simplicity.
-3. Be concise. Keep README minimal. IMPORTANT: no emojis ever
-4. When hitting issues, always identify root cause before trying a fix. Do not guess. Prove with evidence, then fix the root cause.
+1. 使用截至当前时间的库最新稳定版本与符合习惯的写法。
+2. 保持简单：禁止过度设计，始终优先简化，不做不必要的防御式编程，不添加额外功能。
+3. 保持简洁：README 保持最小化；重要要求：不要使用 emoji。
+4. 遇到问题先定位根因再修复：禁止猜测；先用证据证明，再修复根因。
 
-## Working documentation
+## 工作文档
 
-All documents for planning and executing this project will be in the docs/ directory.
-Please review the docs/PLAN.md document before proceeding.
+本项目所有规划与执行文档都放在 `docs/` 目录。  
+开始执行前请先阅读 `docs/PLAN.md`。

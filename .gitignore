@@ -174,3 +174,8 @@ cython_debug/
 
 .DS_Store
 
+# Project runtime artifacts and secrets
+backend/data/*.db
+frontend/test-results/
+playwright-report/
+
