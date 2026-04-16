@@ -9,8 +9,11 @@ def test_db_path(tmp_path: Path) -> Path:
     db_path = tmp_path / "test_pm.db"
     os.environ["PM_DB_PATH"] = str(db_path)
     yield db_path
-    if db_path.exists():
-        db_path.unlink()
+    # TEST-1: do not call db_path.unlink() here — on Windows the sqlite3 connection
+    # held by TestClient's lifespan may still have the file open at teardown time,
+    # causing a PermissionError.  pytest's tmp_path fixture cleans up the entire
+    # temporary directory automatically after the session, so no manual deletion
+    # is needed.
     if "PM_DB_PATH" in os.environ:
         del os.environ["PM_DB_PATH"]
 

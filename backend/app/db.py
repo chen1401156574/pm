@@ -83,22 +83,19 @@ def create_board(connection: sqlite3.Connection, user_id: int, name: str = "defa
 
 def save_board_state(connection: sqlite3.Connection, board_id: int, state: BoardState) -> int:
     serialized_state = serialize_board_state(state)
+    # BUG-1: use a single atomic INSERT with a subquery to eliminate the
+    # SELECT-then-INSERT race condition that could cause a UNIQUE(board_id, version)
+    # conflict under concurrent requests.
     cursor = connection.execute(
         """
-        SELECT COALESCE(MAX(version), 0)
-        FROM board_states
-        WHERE board_id = ?
-        """,
-        (board_id,),
-    )
-    current_version = int(cursor.fetchone()[0])
-    next_version = current_version + 1
-    connection.execute(
-        """
         INSERT INTO board_states(board_id, version, state_json)
-        VALUES (?, ?, ?)
+        VALUES (
+            ?,
+            (SELECT COALESCE(MAX(version), 0) + 1 FROM board_states WHERE board_id = ?),
+            ?
+        )
         """,
-        (board_id, next_version, serialized_state),
+        (board_id, board_id, serialized_state),
     )
     connection.execute(
         """
@@ -109,7 +106,12 @@ def save_board_state(connection: sqlite3.Connection, board_id: int, state: Board
         (board_id,),
     )
     connection.commit()
-    return next_version
+    # Read back the version that was actually written via its rowid (= id column)
+    version_cursor = connection.execute(
+        "SELECT version FROM board_states WHERE id = ?",
+        (cursor.lastrowid,),
+    )
+    return int(version_cursor.fetchone()[0])
 
 
 def get_latest_board_state(connection: sqlite3.Connection, board_id: int) -> dict[str, Any] | None:

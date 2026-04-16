@@ -53,3 +53,25 @@ test("logs out back to sign in form", async ({ page }) => {
   await expect(page.getByRole("button", { name: /sign in/i })).toBeVisible();
   await expect(page.getByRole("heading", { name: /welcome back/i })).toBeVisible();
 });
+
+test("persists board changes after page reload", async ({ page }) => {
+  await login(page);
+  const firstColumn = page.locator('[data-testid^="column-"]').first();
+
+  // Add a uniquely named card
+  await firstColumn.getByRole("button", { name: /add a card/i }).click();
+  await firstColumn.getByPlaceholder("Card title").fill("Persist me after reload");
+  await firstColumn.getByPlaceholder("Details").fill("Should survive a refresh");
+  await firstColumn.getByRole("button", { name: /add card/i }).click();
+  await expect(firstColumn.getByText("Persist me after reload")).toBeVisible();
+
+  // Wait for the save request to complete (saving indicator disappears)
+  await expect(page.getByText("Saving changes...")).toBeHidden({ timeout: 5000 });
+
+  // Reload — sessionStorage persists within the same tab, so no re-login is needed
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Kanban Studio" })).toBeVisible();
+
+  // Card must still exist after reloading from the backend
+  await expect(page.getByText("Persist me after reload")).toBeVisible();
+});

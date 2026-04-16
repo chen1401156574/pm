@@ -51,10 +51,12 @@ export const KanbanBoard = ({
   };
 
   useEffect(() => {
-    if (board) {
+    // BUG-4: skip syncing while a drag is in progress to avoid interrupting
+    // the interaction mid-gesture and causing a visual flash or state reset.
+    if (board && !activeCardId) {
       setLocalBoard(board);
     }
-  }, [board]);
+  }, [board, activeCardId]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {

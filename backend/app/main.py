@@ -1,7 +1,9 @@
 from pathlib import Path
 from contextlib import asynccontextmanager
+import hashlib
 import os
 import logging
+import sqlite3
 from typing import Any
 import uuid
 
@@ -33,7 +35,9 @@ HELLO_WORLD_HTML = """
 
 # Default user for MVP
 DEFAULT_USERNAME = "user"
-DEFAULT_PASSWORD_HASH = "password" # In a real app, use a real hash
+# SEC-1: store a SHA-256 hash instead of plaintext
+DEFAULT_PASSWORD_HASH = hashlib.sha256(b"password").hexdigest()
+
 FIVE_COLUMN_TEMPLATE = [
     {"id": "col-backlog", "title": "Backlog", "order": 0},
     {"id": "col-discovery", "title": "Discovery", "order": 1},
@@ -86,54 +90,75 @@ def get_db():
     finally:
         conn.close()
 
-def get_current_user_id(db=Depends(get_db)) -> int:
-    # For MVP, we just use the hardcoded "user"
+# BUG-2: plain functions instead of Depends so a single db connection is shared
+def get_current_user_id(db: sqlite3.Connection) -> int:
+    """Return the ID of the default MVP user, creating it if it doesn't exist."""
     cursor = db.execute("SELECT id FROM users WHERE username = ?", (DEFAULT_USERNAME,))
     row = cursor.fetchone()
     if row:
         return int(row["id"])
-    
-    # If user doesn't exist, create it (this shouldn't happen if lifespan works correctly)
+
+    # Should not happen if lifespan ran correctly, but recover gracefully
     user_id = create_user(db, DEFAULT_USERNAME, DEFAULT_PASSWORD_HASH)
     create_board(db, user_id)
     return user_id
 
-def get_user_board_id(user_id: int, db=Depends(get_db)) -> int:
+def get_user_board_id(user_id: int, db: sqlite3.Connection) -> int:
+    """Return the ID of the user's default board, creating it if it doesn't exist."""
     cursor = db.execute("SELECT id FROM boards WHERE user_id = ? AND name = 'default'", (user_id,))
     row = cursor.fetchone()
     if row:
         return int(row["id"])
-    
-    # If board doesn't exist, create it
     return create_board(db, user_id)
+
+
+def _apply_migration_if_needed(
+    db: sqlite3.Connection,
+    board_id: int,
+    state_data: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Detect a legacy 3-column board and upgrade it to 5 columns in-place.
+
+    This write-on-read is intentional and idempotent: once migrated the state
+    no longer matches the 3-column pattern, so subsequent reads skip this path.
+    """
+    migrated_state = migrate_legacy_three_column_state(state_data["state"])
+    if migrated_state is None:
+        return state_data
+    migrated_version = save_board_state(db, board_id, migrated_state)
+    return {"version": migrated_version, "state": migrated_state}
+
 
 def create_app(frontend_dist_dir: Path | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         db_path = get_db_path()
         initialize_database(db_path)
-        
+
         # Ensure default user exists
         with _connect(db_path) as conn:
             cursor = conn.execute("SELECT id FROM users WHERE username = ?", (DEFAULT_USERNAME,))
             if not cursor.fetchone():
                 user_id = create_user(conn, DEFAULT_USERNAME, DEFAULT_PASSWORD_HASH)
                 create_board(conn, user_id)
-        
+
         yield
 
     app = FastAPI(title="PM MVP Backend", version="0.1.0", lifespan=lifespan)
+
     cors_origins = os.getenv(
         "PM_CORS_ORIGINS",
         "http://localhost:3000,http://127.0.0.1:3000",
     )
     allowed_origins = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
+    # SEC-4: restrict to the methods and headers actually used by this API
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST"],
+        allow_headers=["Content-Type", "Accept"],
     )
 
     frontend_dist = (
@@ -159,32 +184,23 @@ def create_app(frontend_dist_dir: Path | None = None) -> FastAPI:
         return {"status": "ok"}
 
     @app.get("/api/kanban")
-    def get_kanban(
-        user_id: int = Depends(get_current_user_id),
-        db=Depends(get_db)
-    ) -> dict[str, Any]:
+    def get_kanban(db=Depends(get_db)) -> dict[str, Any]:
+        # BUG-2: single db connection shared across all lookups
+        user_id = get_current_user_id(db)
         board_id = get_user_board_id(user_id, db)
         state_data = get_latest_board_state(db, board_id)
         if state_data is None:
             return {"version": 0, "state": build_default_board_state()}
-
-        migrated_state = migrate_legacy_three_column_state(state_data["state"])
-        if migrated_state is not None:
-            migrated_version = save_board_state(db, board_id, migrated_state)
-            return {
-                "version": migrated_version,
-                "state": migrated_state,
-            }
-
-        return state_data
+        return _apply_migration_if_needed(db, board_id, state_data)
 
     @app.post("/api/kanban")
     def update_kanban(
         state: BoardState,
-        user_id: int = Depends(get_current_user_id),
         db=Depends(get_db)
     ) -> dict[str, Any]:
+        # BUG-2: single db connection shared across all lookups
         try:
+            user_id = get_current_user_id(db)
             board_id = get_user_board_id(user_id, db)
             new_version = save_board_state(db, board_id, state)
             return {"version": new_version, "status": "success"}
@@ -192,8 +208,9 @@ def create_app(frontend_dist_dir: Path | None = None) -> FastAPI:
             logger.warning(f"Validation error: {str(e)}")
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
-            logger.error(f"Error updating kanban: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+            # SEC-2: log the full error internally; return a generic message to the client
+            logger.error(f"Error updating kanban: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Internal server error")
 
     @app.get("/", response_class=HTMLResponse)
     def index():

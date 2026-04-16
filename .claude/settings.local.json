@@ -8,7 +8,15 @@
       "Bash(npx vitest *)",
       "Bash(./node_modules/.bin/vitest run *)",
       "Bash(node ./node_modules/.bin/vitest run)",
-      "Bash(../backend/.venv/Scripts/python -m pytest --cov=app --cov-report=term-missing --co -q)"
+      "Bash(../backend/.venv/Scripts/python -m pytest --cov=app --cov-report=term-missing --co -q)",
+      "Bash(dir D:/project_codes/pm /b /s)",
+      "Bash(findstr /v \"node_modules\")",
+      "Bash(findstr /v \".venv\")",
+      "Bash(findstr /v \".next\")",
+      "Bash(findstr /v \"__pycache__\")",
+      "Bash(findstr /v \".git\")",
+      "Bash(dir \"D:/project_codes/pm/frontend/src\" /b /s)",
+      "Bash(dir *)"
     ]
   }
 }
