@@ -24,16 +24,6 @@ type ApiLoadBoardResponse = {
   state: ApiBoardState;
 };
 
-type ApiAIChatResponse = {
-  reply: string;
-  board_update: ApiBoardState | null;
-};
-
-export type AIChatResult = {
-  reply: string;
-  boardUpdate: BoardData | null;
-};
-
 const normalizeBaseUrl = (url: string) => url.replace(/\/$/, "");
 
 const resolveApiBaseUrl = () => {
@@ -148,31 +138,6 @@ export const saveBoard = async (board: BoardData): Promise<void> => {
   if (!response.ok) {
     throw new Error(await readErrorMessage(response));
   }
-};
-
-export const chatWithAi = async (question: string): Promise<AIChatResult> => {
-  const response = await fetch(buildApiUrl("/api/ai/chat"), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({ question }),
-  });
-
-  if (!response.ok) {
-    throw new Error(await readErrorMessage(response));
-  }
-
-  const payload = (await response.json()) as ApiAIChatResponse;
-  if (typeof payload?.reply !== "string" || !payload.reply.trim()) {
-    throw new Error("AI response is missing reply content.");
-  }
-
-  return {
-    reply: payload.reply,
-    boardUpdate: payload.board_update ? toBoardData(payload.board_update) : null,
-  };
 };
 
 export const __testables = {

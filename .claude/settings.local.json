@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(../backend/.venv/Scripts/python -m pytest --version)",
+      "Bash(../backend/.venv/Scripts/python -m pytest -v --tb=short)",
+      "Bash(npm run *)",
+      "Bash(cmd /c \"npm run test:unit\")",
+      "Bash(npx vitest *)",
+      "Bash(./node_modules/.bin/vitest run *)",
+      "Bash(node ./node_modules/.bin/vitest run)",
+      "Bash(../backend/.venv/Scripts/python -m pytest --cov=app --cov-report=term-missing --co -q)"
+    ]
+  }
+}

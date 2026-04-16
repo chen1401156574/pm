@@ -3,18 +3,11 @@
 import { FormEvent, useEffect, useState } from "react";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { type BoardData } from "@/lib/kanban";
-import { chatWithAi, loadBoard, saveBoard } from "@/lib/kanbanApi";
+import { loadBoard, saveBoard } from "@/lib/kanbanApi";
 
 const SESSION_KEY = "pm-authenticated";
 const VALID_USERNAME = "user";
 const VALID_PASSWORD = "password";
-const MAX_AI_MESSAGES = 30;
-
-type ChatMessage = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-};
 
 export default function Home() {
   const [username, setUsername] = useState("");
@@ -28,10 +21,6 @@ export default function Home() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [lastFailedSave, setLastFailedSave] = useState<BoardData | null>(null);
-  const [aiMessages, setAiMessages] = useState<ChatMessage[]>([]);
-  const [aiInput, setAiInput] = useState("");
-  const [isAiSending, setIsAiSending] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
 
   useEffect(() => {
     setIsAuthenticated(window.sessionStorage.getItem(SESSION_KEY) === "true");
@@ -60,10 +49,6 @@ export default function Home() {
     setLoadError(null);
     setSaveError(null);
     setLastFailedSave(null);
-    setAiMessages([]);
-    setAiInput("");
-    setIsAiSending(false);
-    setAiError(null);
   };
 
   const fetchBoard = async () => {
@@ -113,45 +98,6 @@ export default function Home() {
     void persistBoard(lastFailedSave);
   };
 
-  const addMessage = (role: ChatMessage["role"], content: string) => {
-    const message: ChatMessage = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      role,
-      content,
-    };
-    setAiMessages((current) => [...current, message].slice(-MAX_AI_MESSAGES));
-  };
-
-  const handleAiSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const question = aiInput.trim();
-    if (!question || isAiSending) {
-      return;
-    }
-
-    addMessage("user", question);
-    setAiInput("");
-    setAiError(null);
-    setIsAiSending(true);
-
-    try {
-      const result = await chatWithAi(question);
-      addMessage("assistant", result.reply);
-      if (result.boardUpdate) {
-        setBoard(result.boardUpdate);
-        await fetchBoard();
-      }
-    } catch (sendError) {
-      const message =
-        sendError instanceof Error
-          ? sendError.message
-          : "Failed to send AI message. Please retry.";
-      setAiError(message);
-    } finally {
-      setIsAiSending(false);
-    }
-  };
-
   useEffect(() => {
     if (!isAuthenticated || board !== null || isBoardLoading || loadError !== null) {
       return;
@@ -175,12 +121,6 @@ export default function Home() {
         isSaving={isSaving}
         saveError={saveError}
         onRetrySave={handleRetrySave}
-        aiMessages={aiMessages}
-        aiInput={aiInput}
-        onAiInputChange={setAiInput}
-        onAiSubmit={(event) => void handleAiSubmit(event)}
-        isAiSending={isAiSending}
-        aiError={aiError}
       />
     );
   }

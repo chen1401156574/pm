@@ -2,28 +2,15 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 import os
 import logging
-import json
 from typing import Any
 import uuid
 
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
-from pydantic import BaseModel
-from dotenv import load_dotenv
 
 from app.db import initialize_database, _connect, get_latest_board_state, save_board_state, create_user, create_board
 from app.kanban_schema import BoardState, KanbanValidationError
-from app.openrouter_client import (
-    OPENROUTER_MODEL,
-    OpenRouterClientError,
-    request_openrouter_completion,
-)
-from app.ai_structured_output import AIStructuredOutputError, parse_ai_structured_output
-
-# Load project-root .env so local runs can read OPENROUTER_API_KEY and other settings.
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-load_dotenv(PROJECT_ROOT / ".env")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -54,24 +41,6 @@ FIVE_COLUMN_TEMPLATE = [
     {"id": "col-review", "title": "Review", "order": 3},
     {"id": "col-done", "title": "Done", "order": 4},
 ]
-
-
-class AISelfCheckRequest(BaseModel):
-    prompt: str = "2+2"
-
-
-class AIChatRequest(BaseModel):
-    question: str
-
-
-MAX_AI_HISTORY_MESSAGES = 12
-AI_SYSTEM_PROMPT = (
-    "You are an assistant for a Kanban board manager. "
-    "Return only a JSON object with this exact shape: "
-    '{"reply":"string","board_update":null|BoardState}. '
-    "If no board change is needed, set board_update to null. "
-    "Do not include markdown or extra keys."
-)
 
 
 def build_default_board_state() -> BoardState:
@@ -154,7 +123,6 @@ def create_app(frontend_dist_dir: Path | None = None) -> FastAPI:
         yield
 
     app = FastAPI(title="PM MVP Backend", version="0.1.0", lifespan=lifespan)
-    app.state.ai_histories = {}
     cors_origins = os.getenv(
         "PM_CORS_ORIGINS",
         "http://localhost:3000,http://127.0.0.1:3000",
@@ -226,61 +194,6 @@ def create_app(frontend_dist_dir: Path | None = None) -> FastAPI:
         except Exception as e:
             logger.error(f"Error updating kanban: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
-
-    @app.post("/api/ai/self-check")
-    def ai_self_check(payload: AISelfCheckRequest) -> dict[str, str]:
-        try:
-            reply = request_openrouter_completion(
-                messages=[{"role": "user", "content": payload.prompt}],
-            )
-            return {"reply": reply, "model": OPENROUTER_MODEL}
-        except OpenRouterClientError as exc:
-            raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
-
-    @app.post("/api/ai/chat")
-    def ai_chat(
-        payload: AIChatRequest,
-        user_id: int = Depends(get_current_user_id),
-        db=Depends(get_db),
-    ) -> dict[str, Any]:
-        board_id = get_user_board_id(user_id, db)
-        state_data = get_latest_board_state(db, board_id)
-        board_state = state_data["state"] if state_data is not None else build_default_board_state()
-
-        histories: dict[int, list[dict[str, str]]] = app.state.ai_histories
-        conversation_history = histories.get(user_id, [])
-
-        user_context = {
-            "question": payload.question,
-            "board_state": board_state,
-            "history": conversation_history,
-        }
-        messages = [
-            {"role": "system", "content": AI_SYSTEM_PROMPT},
-            {"role": "user", "content": json.dumps(user_context, ensure_ascii=True)},
-        ]
-
-        try:
-            raw_reply = request_openrouter_completion(messages=messages)
-            reply, board_update = parse_ai_structured_output(raw_reply)
-        except OpenRouterClientError as exc:
-            raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
-        except AIStructuredOutputError as exc:
-            raise HTTPException(status_code=502, detail=f"Invalid AI response: {str(exc)}") from exc
-
-        response: dict[str, Any] = {"reply": reply, "board_update": None}
-        if board_update is not None:
-            new_version = save_board_state(db, board_id, board_update)
-            response["board_update"] = board_update
-            response["version"] = new_version
-
-        next_history = [
-            *conversation_history,
-            {"role": "user", "content": payload.question},
-            {"role": "assistant", "content": reply},
-        ]
-        histories[user_id] = next_history[-MAX_AI_HISTORY_MESSAGES:]
-        return response
 
     @app.get("/", response_class=HTMLResponse)
     def index():
